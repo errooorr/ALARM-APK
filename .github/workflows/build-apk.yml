@@ -1,37 +1,44 @@
+
 name: Build Android APK
-on: 
-    workflow_dispatch: 
-    push: 
-      branches: [ main, master ]
-jobs: 
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
   build:
-    runs-on: ubuntu-latest 
+    runs-on: ubuntu-24.04
+
     permissions:
       contents: read
+
     steps:
       - name: Download source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
-            distribution: temurin
-            java-version: '17'
+          distribution: temurin
+          java-version: '17'
+
       - name: Android SDK
         uses: android-actions/setup-android@v4
         with:
-            packages: 'platform-tools'
+          packages: 'platform-tools'
 
       - name: Install Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
-            gradle-version: '8.10.2'
+          gradle-version: '8.10.2'
 
       - name: Build APK
         run: gradle --no-daemon assembleDebug
 
       - name: Upload installable APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: GenrihAlarm-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
