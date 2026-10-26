@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
                     timeText.setText(String.format(Locale.getDefault(), "%02d:%02d", hour, minute));
                 }, hour, minute, true).show());
 
-        TextView songLabel = label("ПЕСНЯ ИЗ ПАПКИ ТЕЛЕФОНА", 13, MUTED, true);
+        TextView songLabel = label("МУЗЫКА И MP4 ИЗ ПАПКИ ТЕЛЕФОНА", 13, MUTED, true);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
         slp.topMargin = dp(30);
         root.addView(songLabel, slp);
@@ -113,7 +113,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams snp = new LinearLayout.LayoutParams(-1, -2);
         snp.topMargin = dp(12);
         root.addView(songText, snp);
-        button("🎵 Выбрать MP3 / музыку", root, v -> openMusicPicker());
+        button("🎵 Выбрать MP3 / MP4", root, v -> openMusicPicker());
 
         button("✅ СОХРАНИТЬ И ВКЛЮЧИТЬ", root, v -> saveAlarm());
         button("⏹ Выключить ежедневный будильник", root, v -> disableAlarm());
@@ -159,7 +159,9 @@ public class MainActivity extends Activity {
     private void openMusicPicker() {
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
-        pick.setType("audio/*");
+        // Accept music files and MP4 videos. MediaPlayer plays the audio track of MP4.
+        pick.setType("*/*");
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"audio/*", "video/mp4"});
         pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
                 Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(pick, FILE_PICK);
@@ -187,7 +189,7 @@ public class MainActivity extends Activity {
                 if (name != null && !name.isEmpty()) return name;
             }
         } catch (Exception ignored) { }
-        return "Выбранный аудиофайл";
+        return "Выбранный медиафайл";
     }
 
     private void saveAlarm() {
