@@ -16,6 +16,12 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.util.Log;
 
+import ru.genrih.alarm.music.AlarmPlaylistPicker;
+import ru.genrih.alarm.music.AlarmPlaylistRepository;
+
+import java.util.ArrayList;
+import java.util.List;
+
 public class AlarmService extends Service {
     public static final String START = "ru.genrih.alarm.START";
     public static final String STOP = "ru.genrih.alarm.STOP";
@@ -23,7 +29,20 @@ public class AlarmService extends Service {
     private static final int NOTIFICATION_ID = 200;
     private MediaPlayer player;
     private PowerManager.WakeLock wakeLock;
-    private boolean usingFallback = false;
+    public static final String EXTRA_PREVIEW = "ru.genrih.alarm.PREVIEW";
+    private static final int PLAYLIST = 1;
+    private static final int SAVED = 2;
+    private static final int SYSTEM = 3;
+    private final List<PlaybackChoice> playbackChoices = new ArrayList<>();
+    private int nextChoice;
+    private boolean stopping;
+    private boolean preview;
+
+    private static final class PlaybackChoice {
+        final Uri uri;
+        final int source;
+        PlaybackChoice(Uri uri, int source) { this.uri = uri; this.source = source; }
+    }
 
     @Override public void onCreate() {
         super.onCreate();
@@ -41,6 +60,8 @@ public class AlarmService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && STOP.equals(intent.getAction())) {
+            stopping = true;
+            releasePlayer();
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -57,9 +78,10 @@ public class AlarmService extends Service {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GenrihAlarm:Ring");
                 wakeLock.acquire(10 * 60 * 1000L); // Bound battery use even if user cannot dismiss.
             }
-            String saved = AlarmSettings.songUri(this);
-            Uri audio = saved.isEmpty() ? null : Uri.parse(saved);
-            startPlayback(audio);
+            stopping = false;
+            preview = intent != null && intent.getBooleanExtra(EXTRA_PREVIEW, false);
+            prepareChoices();
+            tryNextChoice();
         }
         return START_NOT_STICKY;
     }
@@ -86,15 +108,37 @@ public class AlarmService extends Service {
                 .build();
     }
 
-    private void startPlayback(Uri desired) {
+    private void prepareChoices() {
+        playbackChoices.clear();
+        nextChoice = 0;
+
+        Uri playlist = AlarmPlaylistPicker.pickTrack(this);
+        if (playlist != null) playbackChoices.add(new PlaybackChoice(playlist, PLAYLIST));
+
+        String saved = AlarmSettings.songUri(this);
+        if (saved != null && !saved.isEmpty()) {
+            Uri old = Uri.parse(saved);
+            if (!old.equals(playlist)) playbackChoices.add(new PlaybackChoice(old, SAVED));
+        }
+
+        Uri systemAlarm = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+        Uri systemNotification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        if (systemAlarm != null) playbackChoices.add(new PlaybackChoice(systemAlarm, SYSTEM));
+        if (systemNotification != null && !systemNotification.equals(systemAlarm)) {
+            playbackChoices.add(new PlaybackChoice(systemNotification, SYSTEM));
+        }
+    }
+
+    private void tryNextChoice() {
+        if (stopping) return;
         releasePlayer();
-        if (desired == null) {
-            desired = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+        if (nextChoice >= playbackChoices.size()) {
+            Log.e("GenrihAlarm", "All alarm audio sources failed");
+            stopping = true;
+            stopSelf();
+            return;
         }
-        if (desired == null) {
-            desired = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        }
-        if (desired == null) return;
+        final PlaybackChoice choice = playbackChoices.get(nextChoice++);
         final MediaPlayer mp = new MediaPlayer();
         player = mp;
         try {
@@ -102,35 +146,46 @@ public class AlarmService extends Service {
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build());
-            mp.setDataSource(this, desired);
+            mp.setDataSource(this, choice.uri);
             mp.setLooping(true);
-            mp.setOnPreparedListener(MediaPlayer::start);
-            mp.setOnErrorListener((p, what, extra) -> {
-                Log.w("GenrihAlarm", "Unable to play selected file: " + what + "/" + extra);
-                fallback();
+            mp.setOnPreparedListener(prepared -> {
+                if (stopping || player != prepared) return;
+                try {
+                    prepared.start();
+                    if (choice.source == PLAYLIST && !preview) {
+                        AlarmPlaylistRepository.getInstance(this).recordPlayed(choice.uri);
+                    }
+                } catch (RuntimeException e) {
+                    Log.e("GenrihAlarm", "Could not start alarm audio", e);
+                    if (player == prepared && !stopping) tryNextChoice();
+                }
+            });
+            mp.setOnErrorListener((failed, what, extra) -> {
+                Log.w("GenrihAlarm", "Audio source failed: " + what + "/" + extra);
+                if (player == failed && !stopping) tryNextChoice();
                 return true;
             });
             mp.prepareAsync();
         } catch (Exception e) {
-            Log.e("GenrihAlarm", "Playback failed", e);
-            fallback();
+            Log.e("GenrihAlarm", "Cannot prepare alarm audio", e);
+            if (player == mp && !stopping) tryNextChoice();
         }
     }
 
-    private void fallback() {
-        if (usingFallback) { stopSelf(); return; }
-        usingFallback = true;
-        startPlayback(null);
-    }
-
     private void releasePlayer() {
-        if (player == null) return;
-        try { player.setOnErrorListener(null); player.reset(); player.release(); }
-        catch (Exception ignored) { }
-        player = null;
+        MediaPlayer old = player;
+        player = null; // Invalidate asynchronous callbacks before touching the old player.
+        if (old == null) return;
+        try {
+            old.setOnPreparedListener(null);
+            old.setOnErrorListener(null);
+            old.reset();
+        } catch (Exception ignored) { }
+        try { old.release(); } catch (Exception ignored) { }
     }
 
     @Override public void onDestroy() {
+        stopping = true;
         releasePlayer();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         super.onDestroy();

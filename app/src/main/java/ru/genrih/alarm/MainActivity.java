@@ -6,6 +6,7 @@ import android.app.AlarmManager;
 import android.app.NotificationManager;
 import android.app.TimePickerDialog;
 import android.content.Intent;
+import android.content.ClipData;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -23,9 +24,14 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.util.Locale;
+import java.util.ArrayList;
+import java.util.List;
+
+import ru.genrih.alarm.music.AlarmPlaylistRepository;
 
 public class MainActivity extends Activity {
     private static final int FILE_PICK = 7;
+    private static final int MULTI_FILE_PICK = 9;
     private static final int REQUEST_NOTIFICATIONS = 8;
     private static final int BG = Color.rgb(16, 23, 37);
     private static final int FG = Color.rgb(240, 244, 251);
@@ -36,6 +42,7 @@ public class MainActivity extends Activity {
     private String selectedName;
     private TextView timeText;
     private TextView songText;
+    private TextView playlistText;
     private TextView statusText;
 
     @Override public void onCreate(Bundle state) {
@@ -114,6 +121,10 @@ public class MainActivity extends Activity {
         snp.topMargin = dp(12);
         root.addView(songText, snp);
         button("🎵 Выбрать MP3 / MP4", root, v -> openMusicPicker());
+        button("♫ Добавить песни в случайный плейлист", root, v -> openMultiMusicPicker());
+        playlistText = label("", 14, MUTED, false);
+        root.addView(playlistText);
+        updatePlaylistStatus();
 
         button("✅ СОХРАНИТЬ И ВКЛЮЧИТЬ", root, v -> saveAlarm());
         button("⏹ Выключить ежедневный будильник", root, v -> disableAlarm());
@@ -122,7 +133,9 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Сначала сохраните выбранную песню", Toast.LENGTH_LONG).show();
                 return;
             }
-            Intent s = new Intent(this, AlarmService.class).setAction(AlarmService.START);
+            Intent s = new Intent(this, AlarmService.class)
+                    .setAction(AlarmService.START)
+                    .putExtra(AlarmService.EXTRA_PREVIEW, true);
             try {
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(s);
                 else startService(s);
@@ -167,9 +180,56 @@ public class MainActivity extends Activity {
         startActivityForResult(pick, FILE_PICK);
     }
 
+    private void openMultiMusicPicker() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"audio/*", "video/mp4"});
+        pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(pick, MULTI_FILE_PICK);
+    }
+
+    private void updatePlaylistStatus() {
+        if (playlistText == null) return;
+        int count = AlarmPlaylistRepository.getInstance(this).loadPlaylist().size();
+        playlistText.setText("Случайный плейлист: " + count + " треков. "
+                + (count == 0 ? "Используется прежняя мелодия." : "При звонке выбирается случайная песня."));
+    }
+
+    private void handleMultiMusicResult(Intent data) {
+        List<Uri> uris = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        int unavailable = 0;
+        ClipData clips = data.getClipData();
+        int count = clips != null ? clips.getItemCount() : (data.getData() != null ? 1 : 0);
+        for (int i = 0; i < count; i++) {
+            Uri uri = clips != null ? clips.getItemAt(i).getUri() : data.getData();
+            if (uri == null) continue;
+            try {
+                getContentResolver().takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                uris.add(uri);
+                names.add(getFileName(uri));
+            } catch (SecurityException e) {
+                unavailable++;
+            }
+        }
+        int added = AlarmPlaylistRepository.getInstance(this).addEntries(uris, names);
+        updatePlaylistStatus();
+        Toast.makeText(this, "Добавлено: " + added + ", без постоянного доступа: " + unavailable,
+                Toast.LENGTH_LONG).show();
+    }
+
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request != FILE_PICK || result != RESULT_OK || data == null || data.getData() == null) return;
+        if (result != RESULT_OK || data == null) return;
+        if (request == MULTI_FILE_PICK) {
+            handleMultiMusicResult(data);
+            return;
+        }
+        if (request != FILE_PICK || data.getData() == null) return;
         Uri uri = data.getData();
         try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
         catch (SecurityException e) {
@@ -239,5 +299,6 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (statusText != null) updateStatus();
+        updatePlaylistStatus();
     }
 }
