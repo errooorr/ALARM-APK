@@ -2,6 +2,8 @@ package ru.genrih.alarm;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlarmManager;
+import android.content.res.ColorStateList;
 import android.app.NotificationManager;
 import android.app.TimePickerDialog;
 import android.content.ClipData;
@@ -39,11 +41,11 @@ public class MainActivity extends Activity {
     private static final int MULTI_FILE_PICK = 9;
     private static final int REQUEST_NOTIFICATIONS = 8;
 
-    private static final int BG = Color.rgb(13, 27, 57);
-    private static final int PANEL = Color.rgb(38, 65, 115);
-    private static final int PANEL_LIGHT = Color.rgb(64, 91, 153);
-    private static final int PURPLE = Color.rgb(141, 91, 237);
-    private static final int LIME = Color.rgb(80, 210, 155);
+    private static final int BG = Color.rgb(19, 59, 99);
+    private static final int PANEL = Color.rgb(42, 77, 133);
+    private static final int PANEL_LIGHT = Color.rgb(75, 105, 169);
+    private static final int PURPLE = Color.rgb(149, 76, 238);
+    private static final int LIME = Color.rgb(55, 205, 158);
     private static final int WHITE = Color.WHITE;
     private static final int MUTED = Color.rgb(194, 211, 237);
 
@@ -156,29 +158,28 @@ public class MainActivity extends Activity {
     private void createUi() {
         LinearLayout frame = vertical();
         frame.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{Color.rgb(57, 88, 147), BG}));
-        frame.setPadding(dp(14), dp(6), dp(14), dp(6));
+                new int[]{Color.rgb(53, 82, 143), Color.rgb(23, 74, 116)}));
+        frame.setPadding(dp(8), dp(2), dp(8), dp(2));
         setContentView(frame);
 
-        TextView title = text("Генрих", 21, WHITE, true);
-        title.setPadding(0, dp(10), 0, dp(10));
+        TextView title = text("Генрих", 20, WHITE, true);
+        title.setPadding(0, dp(14), 0, dp(10));
         frame.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
         scroll.setVerticalScrollBarEnabled(false);
         page = vertical();
         page.setGravity(Gravity.CENTER_HORIZONTAL);
-        page.setPadding(dp(6), dp(8), dp(6), dp(22));
+        page.setPadding(dp(15), dp(5), dp(15), dp(20));
         scroll.addView(page);
         frame.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.HORIZONTAL);
-        nav.setPadding(dp(3), dp(6), dp(3), dp(5));
-        nav.setBackground(background(Color.rgb(33, 58, 108), Color.rgb(25, 45, 84), 18));
-        frame.addView(nav, new LinearLayout.LayoutParams(-1, -2));
+        nav.setGravity(Gravity.CENTER);
+        nav.setPadding(dp(2), dp(2), dp(2), dp(2));
+        nav.setBackground(background(Color.rgb(50, 93, 153), Color.rgb(37, 76, 128), 13));
+        frame.addView(nav, new LinearLayout.LayoutParams(-1, dp(58)));
         showTab(currentTab);
     }
 
@@ -201,56 +202,53 @@ public class MainActivity extends Activity {
 
     private void renderNav() {
         nav.removeAllViews();
-        String[] names = {"⏰", "♫", "✓", "⚙"};
-        String[] hints = {"Будильник", "Музыка", "Доступ", "Статус"};
-        for (int i = 0; i < names.length; i++) {
-            final int target = i;
-            LinearLayout item = vertical();
-            item.setGravity(Gravity.CENTER);
-            item.setPadding(dp(1), dp(5), dp(1), dp(5));
-            if (i == currentTab) item.setBackground(background(PANEL_LIGHT, PANEL, 12));
-            TextView symbol = text(names[i], 24, i == currentTab ? WHITE : MUTED, true);
-            item.addView(symbol);
-            TextView name = text(hints[i], 10, i == currentTab ? WHITE : MUTED, false);
-            name.setMaxLines(2);
-            item.addView(name);
-            nav.addView(item, new LinearLayout.LayoutParams(0, -2, 1f));
-            item.setContentDescription(hints[i]);
+        String[] symbols = {"⏰", "♫", "☎", "⚙"};
+        String[] labels = {"Будильник", "Музыка", "Рингтон", "Разрешения"};
+        int[] tabs = {0, 1, 3, 2};
+        for (int i = 0; i < symbols.length; i++) {
+            final int target = tabs[i];
+            TextView item = text(symbols[i], 29,
+                    target == currentTab ? WHITE : MUTED, true);
+            item.setContentDescription(labels[i]);
+            if (target == currentTab) item.setBackground(background(
+                    Color.rgb(76, 112, 178), Color.rgb(38, 99, 148), 9));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
+            lp.leftMargin = dp(2);
+            lp.rightMargin = dp(2);
+            nav.addView(item, lp);
             item.setOnClickListener(v -> showTab(target));
         }
     }
 
-    private void alarmPage() {
-        imageHero();
-        timeText = heading(page, timeString(), 48, 2);
-        timeText.setOnClickListener(v -> pickTime());
-        description(page, "Будильник · нажми на время для изменения", 1);
-        LinearLayout c = card(page, 18);
-        Switch toggle = new Switch(this);
-        toggle.setText("Ежедневный будильник");
-        toggle.setTextColor(WHITE);
-        toggle.setTextSize(15);
-        toggle.setPadding(dp(5), dp(10), dp(5), dp(10));
-        toggle.setChecked(AlarmSettings.enabled(this));
-        c.addView(toggle, new LinearLayout.LayoutParams(-1, -2));
-        toggle.setOnCheckedChangeListener((view, checked) -> {
-            if (checked) saveAlarm();
-            else disableAlarm();
-            if (AlarmSettings.enabled(this) != checked) view.setChecked(AlarmSettings.enabled(this));
-        });
-        button(c, "Изменить время", false, v -> pickTime());
-        statusText = description(page, "", 18);
-        updateStatus();
+    private void iconHero(int drawable, int size, int top) {
+        ImageView view = new ImageView(this);
+        view.setImageResource(drawable);
+        view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(size), dp(size));
+        lp.topMargin = dp(top);
+        page.addView(view, lp);
     }
 
-    private void imageHero() {
-        ImageView image = new ImageView(this);
-        image.setImageResource(R.drawable.genrih_ui_alarm);
-        image.setAdjustViewBounds(true);
-        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(164), dp(164));
+    private void alarmPage() {
+        iconHero(R.drawable.genrih_ref_clock, 180, 42);
+        timeText = heading(page, timeString(), 54, 0);
+        timeText.setOnClickListener(v -> pickTime());
+        description(page, "Будильник", 2);
+        Switch toggle = new Switch(this);
+        toggle.setText("");
+        toggle.setThumbTintList(ColorStateList.valueOf(WHITE));
+        toggle.setTrackTintList(new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                new int[]{LIME, Color.rgb(71, 87, 119)}));
+        toggle.setChecked(AlarmSettings.enabled(this));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(80), dp(53));
         lp.topMargin = dp(12);
-        page.addView(image, lp);
+        page.addView(toggle, lp);
+        toggle.setOnCheckedChangeListener((view, checked) -> {
+            if (checked) saveAlarm(); else disableAlarm();
+            if (AlarmSettings.enabled(this) != checked)
+                view.setChecked(AlarmSettings.enabled(this));
+        });
     }
 
     private String timeString() {
@@ -266,19 +264,36 @@ public class MainActivity extends Activity {
         }, hour, minute, true).show();
     }
 
+    private void musicRow(String symbol, String name, boolean purple, View.OnClickListener click) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(4), dp(4), dp(9), dp(4));
+        row.setBackground(background(purple ? Color.rgb(93, 99, 171) : PANEL_LIGHT,
+                purple ? Color.rgb(55, 88, 151) : PANEL, 14));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(64));
+        lp.topMargin = dp(12);
+        page.addView(row, lp);
+        TextView icon = text(symbol, 24, WHITE, true);
+        icon.setBackground(background(purple ? Color.rgb(168, 98, 247) : Color.rgb(80, 119, 174),
+                purple ? Color.rgb(109, 62, 207) : Color.rgb(44, 90, 147), 11));
+        row.addView(icon, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        TextView title = text(name, 16, WHITE, true);
+        title.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        title.setPadding(dp(12), 0, 0, 0);
+        row.addView(title, new LinearLayout.LayoutParams(0, -1, 1f));
+        TextView arrow = text("›", 27, MUTED, false);
+        row.addView(arrow, new LinearLayout.LayoutParams(dp(21), -1));
+        row.setOnClickListener(click);
+    }
+
     private void musicPage() {
-        heading(page, "Выбор музыки", 23, 4);
-        description(page, "Любимые треки вместо системного сигнала", 4);
-        LinearLayout c = card(page, 20);
-        button(c, "▶   Моя музыка", true, v -> openMusicPicker());
-        button(c, "⤨   Случайный трек", false, v -> openMultiMusicPicker());
-        button(c, "☷   Плейлист", false, v -> showPlaylist());
-        songText = heading(page, selectedName, 16, 22);
-        songText.setMaxLines(3);
-        description(page, "Резервная мелодия", 5);
-        int count = AlarmPlaylistRepository.getInstance(this).loadPlaylist().size();
-        description(page, "Случайный плейлист: " + count + " треков", 12);
-        button(page, "Сохранить и включить будильник", true, v -> saveAlarm());
+        heading(page, "Выбор музыки", 23, 30);
+        musicRow("▶", "Моя музыка", true, v -> openMusicPicker());
+        musicRow("⤨", "Случайный трек", true, v -> openMultiMusicPicker());
+        musicRow("☷", "Плейлист", false, v -> showPlaylist());
+        if (selectedUri != null && !selectedUri.isEmpty() &&
+                !selectedUri.equals(AlarmSettings.songUri(this)))
+            button(page, "Сохранить мелодию", true, v -> saveAlarm());
     }
 
     private void showPlaylist() {
@@ -299,34 +314,57 @@ public class MainActivity extends Activity {
         button(page, "← Назад к выбору", false, v -> showTab(1));
     }
 
-    private void permissionsPage() {
-        TextView shield = heading(page, "🛡️", 76, 20);
-        shield.setContentDescription("Защита и разрешения");
-        heading(page, "Разрешения", 25, 5);
-        LinearLayout c = card(page, 22);
-        permissionLine(c, "♫ Доступ к музыке", "Через выбор файлов", true);
-        boolean notifications = Build.VERSION.SDK_INT < 33 ||
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
-        permissionLine(c, "▣ Уведомления", notifications ? "Разрешены" : "Требуется разрешение", notifications);
-        boolean full = Build.VERSION.SDK_INT < 34 || fullScreenAllowed();
-        permissionLine(c, "▣ Полный экран", full ? "Разрешён" : "Нужно разрешение", full);
-        button(page, "Разрешить уведомления", true, v -> requestNotifications());
-        if (Build.VERSION.SDK_INT >= 34) {
-            button(page, "Полный экран при звонке", false, v -> requestFullScreen());
-        }
-        description(page, "На Huawei также проверь автозапуск и ограничения батареи для Генриха.", 24);
+    private boolean exactAlarmsAllowed() {
+        if (Build.VERSION.SDK_INT < 31) return true;
+        AlarmManager mgr = getSystemService(AlarmManager.class);
+        return mgr != null && mgr.canScheduleExactAlarms();
     }
 
-    private void permissionLine(LinearLayout root, String title, String summary, boolean granted) {
-        LinearLayout line = new LinearLayout(this);
-        line.setGravity(Gravity.CENTER_VERTICAL);
-        line.setPadding(dp(6), dp(8), dp(6), dp(8));
-        TextView titleView = text(title + "\n" + summary, 13, WHITE, false);
-        titleView.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        line.addView(titleView, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView state = text(granted ? "✓" : "!", 21, granted ? LIME : Color.rgb(255, 211, 103), true);
-        line.addView(state, new LinearLayout.LayoutParams(dp(36), -2));
-        root.addView(line, new LinearLayout.LayoutParams(-1, -2));
+    private void permissionsPage() {
+        iconHero(R.drawable.genrih_ref_shield, 138, 31);
+        heading(page, "Разрешения", 25, 3);
+        LinearLayout panel = vertical();
+        panel.setPadding(dp(12), dp(12), dp(12), dp(18));
+        panel.setBackground(background(Color.rgb(239, 249, 253), Color.rgb(209, 236, 249), 18));
+        add(page, panel, 12);
+        permissionLine(panel, "♫", "Доступ к музыке", "Через выбор файлов", true);
+        boolean notifications = Build.VERSION.SDK_INT < 33 ||
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        permissionLine(panel, "▣", "Уведомления", notifications ? "Разрешены" : "Не разрешены", notifications);
+        boolean full = Build.VERSION.SDK_INT < 34 || fullScreenAllowed();
+        permissionLine(panel, "▣", "Полный экран", full ? "Разрешён" : "Не разрешён", full);
+        permissionLine(panel, "◷", "Точный будильник",
+                exactAlarmsAllowed() ? "Разрешён" : "Нужно разрешение", exactAlarmsAllowed());
+        button(panel, "Разрешить", true, v -> {
+            if (!notifications) requestNotifications();
+            else if (!full) requestFullScreen();
+            else if (!exactAlarmsAllowed()) {
+                try { startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                        Uri.parse("package:" + getPackageName()))); }
+                catch (Exception e) { Toast.makeText(this, "Открой настройки вручную", Toast.LENGTH_LONG).show(); }
+            } else Toast.makeText(this, "Все проверяемые разрешения получены", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void permissionLine(LinearLayout root, String symbol, String title, String subtitle, boolean granted) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(8), dp(2), dp(8));
+        TextView ico = text(symbol, 20, Color.rgb(33, 80, 116), true);
+        row.addView(ico, new LinearLayout.LayoutParams(dp(33), dp(41)));
+        LinearLayout detail = vertical();
+        TextView titleView = text(title, 14, Color.rgb(19, 53, 81), true);
+        titleView.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        detail.addView(titleView);
+        TextView subtitleView = text(subtitle, 11, Color.rgb(57, 89, 120), false);
+        subtitleView.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        detail.addView(subtitleView);
+        row.addView(detail, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView check = text(granted ? "✓" : "!", 18, WHITE, true);
+        check.setBackground(background(granted ? LIME : Color.rgb(218, 161, 75),
+                granted ? Color.rgb(28, 145, 114) : Color.rgb(192, 126, 47), 30));
+        row.addView(check, new LinearLayout.LayoutParams(dp(27), dp(27)));
+        root.addView(row);
     }
 
     private boolean fullScreenAllowed() {
@@ -357,21 +395,26 @@ public class MainActivity extends Activity {
     }
 
     private void ringtonePage() {
-        heading(page, "📞", 78, 18);
-        heading(page, "Рингтон", 25, 5);
-        description(page, "Текущий трек:", 13);
-        String current = AlarmSettings.songName(this);
-        heading(page, current, 17, 9).setMaxLines(3);
-        int count = AlarmPlaylistRepository.getInstance(this).loadPlaylist().size();
-        if (count > 0) description(page, "Случайный плейлист: " + count + " треков", 14);
-        LinearLayout c = card(page, 20);
-        statusText = text("", 16, WHITE, true);
-        c.addView(statusText);
-        updateStatus();
-        button(page, "▶ Проверить звук", true, v -> previewSound());
-        button(page, "■ Остановить звук", false, v ->
-                stopService(new Intent(this, AlarmService.class)));
-        button(page, "Выключить будильник", false, v -> disableAlarm());
+        iconHero(R.drawable.genrih_ref_phone, 175, 37);
+        heading(page, "Рингтон", 28, 1);
+        description(page, "Текущий трек:", 16);
+        String selected = AlarmSettings.songName(this);
+        if (selected == null || selected.isEmpty()) selected = "Системный звук";
+        TextView name = text(selected, 17, LIME, false);
+        name.setMaxLines(2);
+        add(page, name, 10);
+        TextView state = text(AlarmSettings.enabled(this) ? "✓  Установлен" : "○  Не установлен",
+                16, WHITE, true);
+        state.setPadding(dp(16), dp(11), dp(16), dp(11));
+        state.setBackground(background(Color.rgb(85, 215, 159), Color.rgb(28, 162, 133), 12));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
+        p.topMargin = dp(30);
+        page.addView(state, p);
+        state.setOnClickListener(v -> previewSound());
+        // Additional controls remain accessible lower down without crowding the reference layout.
+        button(page, "▶ Проверить звук", false, v -> previewSound());
+        button(page, "■ Остановить звук", false,
+                v -> stopService(new Intent(this, AlarmService.class)));
     }
 
     private void openMusicPicker() {
